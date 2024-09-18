@@ -1,6 +1,7 @@
 package SW_B;
 
 
+import java.util.Collections;
 import java.util.TreeSet;
 
 
@@ -73,7 +74,69 @@ class UserSolution {
         }
     }
 
-    static TreeSet<Player>[] leagues; // ! 리그별 선수관리를 위해 TreeSet 배열 선언
+    private static class League {
+        TreeSet<Player> upper; // ! 상위 절반 선수들 -> 능력이 좋은 상위 절반 선수 저장 (능력 높은 순)
+        TreeSet<Player> lower; // ! 하위 절반 선수들 -> 능력이 낮은 하위 절반 선수 저장 (능력 낮은 순)
+
+        League() {
+            upper = new TreeSet<>();
+            lower = new TreeSet<>(Collections.reverseOrder()); // ! 능력 낮은 순으로 저장하기 위해
+        }
+
+        void add(Player player){
+            // ! 1. upper TreeSet이 비어있는 경우, 새로운 선수를 무조건 upper에 추가. -> 첫 번째 선수를 추가할 때 발생
+            // ! 2. 새로 추가하려는 선수(player)와 upper의 마지막 선수(가장 능력이 낮은 선수) 비교
+            // ! 2-1. 0보다 작으면 새 선수의 능력이 upper.last()보다 높다는 의미 -> 내가 구현한 compareTo를 보고 조건문 작성하면됨
+            if (upper.isEmpty() || player.compareTo(upper.last()) < 0) {
+                upper.add(player);
+            }else {
+                lower.add(player);
+            }
+            balance(); // ! 이제 추가 후에 개수 조정 진행해야해.
+        }
+
+        private void balance() {
+            while (upper.size() > lower.size() + 1) { // ! 딱 같거나 1개 커야함.
+                lower.add(upper.pollLast());
+            }
+            while (upper.size() < lower.size()) {
+                upper.add(lower.pollLast()); // ! lower은 가장 첫번째가 능력이 좋음 정렬 조건 반대라.
+            }
+        }
+
+        /**
+         * ! 위치 불확실성 처리. -> 선수가 upper에 있을지 lower에 있을지 미리 알 수 없다.
+         * ! 따라서 두 TreeSet 모두에서 제거 시도.
+         * * remove 메서드는 요소가 없으면 false 반환. 따라서 OlogN
+         * * 제거가 성공했을 때만 balance 호출 (균형 유지)
+         */
+        void remove(Player player) {
+            if (upper.remove(player) || lower.remove(player)) {
+                balance();
+            }
+        }
+
+        Player getFirst() {
+            return upper.first(); // ! 가장 능력 높은 선수
+        }
+
+        // ! 무조건 lower의 first라고 생각했으면 안됐음. 없을 수도 있잖아.
+        Player getLast() {
+            return lower.isEmpty() ? upper.last() : lower.first(); // ! 가장 능력 낮은 선수
+        }
+
+        /**
+         * ! add함수와 balance() 메서드의 작동 방식 떄문에 upper의 크기는 항상 lower와 같거나 1개 더 많게 유지
+         * ! 이로 인해 중간값은 항상 upper.last()가 된다.
+         * * 전체 선수가 홀수 : upper의 크기는 lower크기보다 항상 1크게 된다.
+         * * 전체 선수가 짝수 : upper와 lower의 크기가 같아진다.
+         */
+        Player getMiddle() {
+            return upper.last(); // ! 중간 순위의 선수
+        }
+    }
+
+    static League[] leagues; // ! 리그별 선수 관리
     static int totalPlayers;
     static int totalLeagues;
     static int playerPerLeague;
@@ -81,22 +144,23 @@ class UserSolution {
     /**
      * ! 선수의 수, 리그의 수, 선수의 능력치가 주어짐
      * ! 선수들은 순서대로 리그에 배치됨 -> 처음에 최초로 모든 리그들을 정렬한다.
+     * ! 초기화 함수
      */
     void init(int N, int L, int mAbility[]) {
         totalPlayers = N;
         totalLeagues = L;
         playerPerLeague = N / L;
-        leagues = new TreeSet[totalLeagues]; // ! 우선 배열 선언
 
-        for (int i = 0; i < totalLeagues; i++) {
-            leagues[i] = new TreeSet<>();
+        leagues = new League[totalLeagues];
+        for (int i = 0; i < L; i++) {
+            leagues[i] = new League();
         }
+
         for (int i = 0; i < totalPlayers; i++) {
-            int ability = mAbility[i]; // ! 현재 선수의 능력치
+            int ability = mAbility[i]; // ! 각 플레이어 능력치
             int leagueId = i / playerPerLeague;
             leagues[leagueId].add(new Player(i, ability));
         }
-
     }
 
     /**
@@ -113,25 +177,26 @@ class UserSolution {
         Player[] movingUp = new Player[totalLeagues - 1];
         Player[] movingDown = new Player[totalLeagues - 1];
 
-        // ! 이동할 선수 선택.
+        // ! 이동할 선수 선택
         for (int i = 0; i < totalLeagues - 1; i++) {
-            movingUp[i] = leagues[i + 1].first(); // ! 하위 리그의 최고 선수
-            movingDown[i] = leagues[i].last(); // ! 상위 리그의 최하위 선수
+            movingUp[i] = leagues[i + 1].getFirst(); // ! 하위 리그의 최고 선수
+            movingDown[i] = leagues[i].getLast(); // ! 상위 리그의 최하위 선수
 
             result += movingUp[i].id + movingDown[i].id;
 
-            // ! 선수들을 현재 리그에서 제거
+            // ! 선택한 선수들 제거
             leagues[i + 1].remove(movingUp[i]);
             leagues[i].remove(movingDown[i]);
+
         }
 
         // ! 선수들 이동
         for (int i = 0; i < totalLeagues - 1; i++) {
             leagues[i].add(movingUp[i]); // ! 상위 리그로 이동
-            leagues[i + 1].add(movingDown[i]);
+            leagues[i + 1].add(movingDown[i]); // ! 하위 리그로 이동
         }
 
-        return result; // ! 합산 결과 반환
+        return result;
     }
 
     /**
@@ -146,43 +211,26 @@ class UserSolution {
         Player[] movingUp = new Player[totalLeagues - 1];
         Player[] movingDown = new Player[totalLeagues - 1];
 
-        // ! 이동할 선수 선택
+        // ! 트레이드할 선수 선택
         for (int i = 0; i < totalLeagues - 1; i++) {
-            movingUp[i] = leagues[i + 1].first(); // ! 하위 리그의 최고 선수
-            movingDown[i] = findMiddlePlayer(leagues[i]); // ! 상위 리그의 중간 급 선수
+            movingUp[i] = leagues[i + 1].getFirst(); // ! 하위 리그의 최고 선수
+            movingDown[i] = leagues[i].getMiddle(); // ! 상위 리그의 중위권 선수
 
             result += movingUp[i].id + movingDown[i].id;
-
-            // ! 선수들을 현재 리그에서 제거
+            // ! 해당 선수들 제거
             leagues[i + 1].remove(movingUp[i]);
             leagues[i].remove(movingDown[i]);
         }
 
-        // ! 선수들 이동
+        // ! 선수들 트레이드
         for (int i = 0; i < totalLeagues - 1; i++) {
-            leagues[i].add(movingUp[i]); // ! 상위 리그로 이동
+            leagues[i].add(movingUp[i]);   // ! 상위 리그로 이동
             leagues[i + 1].add(movingDown[i]); // ! 하위 리그로 이동
         }
 
         return result;
     }
 
-    public Player findMiddlePlayer(TreeSet<Player> league) {
-        int size = league.size(); // ! 일단 전체 사이즈
-        int middleIndex = (size + 1) / 2 -1; // ! 해당 리그 선수들의 중간 인덱스 계산
 
-        Player middlePlayer = null;
-        int currentIndex = 0;
-
-        for (Player player : league) {
-            if (currentIndex == middleIndex) {
-                middlePlayer = player;
-                break;
-            }
-            currentIndex += 1;
-        }
-
-        return middlePlayer;
-    }
 
 }
